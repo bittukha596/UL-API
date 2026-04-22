@@ -1,13 +1,14 @@
 import re
 import logging
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 import uvicorn
 from curl_cffi.requests import AsyncSession
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-api = FastAPI(title="UL Sniper (Ghost Edition)")
+api = FastAPI(title="UL Sniper (German Ghost Edition)")
 
 def format_duration(raw_dur):
     if not raw_dur: return "Unknown"
@@ -27,14 +28,12 @@ def format_duration(raw_dur):
 
 @api.get("/api/health")
 async def health_check():
-    return {"status": "200 OK", "engine": "Ghost Ripper Online 🔥"}
+    return {"status": "200 OK", "engine": "German Ghost Ripper Online 🔥"}
 
 @api.get("/api/download")
 async def extract_media(url: str):
     logger.info(f"🎯 Ripping: {url}")
     try:
-        # 👻 THE FIX: Pure impersonation with ZERO custom headers! 
-        # This prevents Cloudflare from detecting a User-Agent mismatch.
         async with AsyncSession(impersonate="chrome116") as session:
             response = await session.get(url, timeout=15)
             raw_html = response.text
@@ -52,23 +51,22 @@ async def extract_media(url: str):
             
             # --- 3. DURATION ---
             duration = "Unknown"
-            dur_match = re.search(r'<meta[\s\S]+?(?:property|itemprop)=["\'](?:video:duration|og:duration|duration|og:video:duration)["\'][\s\S]+?content=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
-            if dur_match: duration = format_duration(dur_match.group(1))
+            dur_match = re.search(r'"duration"\s*:\s*(\d+)', raw_html)
+            if not dur_match:
+                dur_match = re.search(r'<meta[\s\S]+?(?:property|itemprop)=["\'](?:video:duration|og:duration|duration|og:video:duration)["\'][\s\S]+?content=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
+            if dur_match: 
+                duration = format_duration(dur_match.group(1))
 
             # --- 4. THE STREAM ---
             stream_url = None
-            
-            # GOLDEN EXTRACTION: Hunts for the exact unencrypted preload link you found in the desktop source
             preload_match = re.search(r'<link[^>]+?href=["\'](https?://[^"\']+\.m3u8[^"\']*)["\'][^>]*?as=["\']fetch["\']', raw_html, re.IGNORECASE)
             if preload_match:
                 stream_url = preload_match.group(1)
             
-            # Fallback Universal m3u8
             if not stream_url:
                 m3u8_links = re.findall(r'(https?://[^\s"\'<>\[\]()]+?\.m3u8[^\s"\'<>\[\]()]*)', clean_html)
                 if m3u8_links: stream_url = m3u8_links[0]
                 
-            # Fallback MP4
             if not stream_url:
                 mp4_links = re.findall(r'(https?://[^\s"\'<>\[\]()]+?\.mp4[^\s"\'<>\[\]()]*)', clean_html)
                 for link in mp4_links:
