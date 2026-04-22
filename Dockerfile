@@ -15,4 +15,4 @@ COPY app.py .
 EXPOSE 8000
 
 # Fire the engine!
-CMD ["uvicorn", "app:api", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "app:api", "--host", "0.0.0.0", "--port", "8000"]
