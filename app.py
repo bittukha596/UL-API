@@ -5,16 +5,18 @@ from fastapi.responses import HTMLResponse
 import uvicorn
 from curl_cffi.requests import AsyncSession
 
+# --- PROFESSIONAL LOGGING ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-api = FastAPI(title="UL Sniper (Omni-Extractor Edition)")
+api = FastAPI(title="UL Sniper (Omni-Extractor Ultimate)")
 
 def format_duration(raw_dur):
+    """Universally parses ISO 8601 timestamps and raw seconds into MM:SS or HH:MM:SS"""
     if not raw_dur: return "Unknown"
     raw_dur = str(raw_dur).strip().upper()
     
-    # 💀 THE ISO 8601 HUNTER (Catches PT19M57S, P0DT0H13M41S, etc.)
+    # THE ISO 8601 HUNTER (Catches PT19M57S, P0DT0H13M41S, etc.)
     match = re.search(r'P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', raw_dur)
     if match:
         d = int(match.group(1)) if match.group(1) else 0
@@ -23,12 +25,11 @@ def format_duration(raw_dur):
         s = int(match.group(4)) if match.group(4) else 0
         
         total_seconds = (d * 86400) + (h * 3600) + (m * 60) + s
-        
         h, rem = divmod(total_seconds, 3600)
         m, s = divmod(rem, 60)
         return f"{h:02d}:{m:02d}:{s:02d}" if h > 0 else f"{m:02d}:{s:02d}"
         
-    # Raw seconds fallback (if they just send "2125")
+    # Raw seconds fallback
     if raw_dur.replace('.', '').isdigit():
         total_seconds = int(float(raw_dur))
         h, rem = divmod(total_seconds, 3600)
@@ -39,13 +40,13 @@ def format_duration(raw_dur):
 
 @api.get("/api/health")
 async def health_check():
-    return {"status": "200 OK", "engine": "Omni-Extractor Online 🔥"}
+    return {"status": "200 OK", "engine": "Omni-Extractor Ultimate Online 🔥"}
 
 @api.get("/api/download")
 async def extract_media(url: str):
     logger.info(f"🎯 Ripping: {url}")
     try:
-        # Ghost Mode: Let curl_cffi handle ALL headers mathematically perfectly
+        # Ghost Mode: Zero custom headers, perfect browser impersonation
         async with AsyncSession(impersonate="chrome116") as session:
             response = await session.get(url, timeout=15)
             raw_html = response.text
@@ -62,7 +63,7 @@ async def extract_media(url: str):
                 title_match = re.search(r'<title[^>]*>([\s\S]*?)</title>', raw_html, re.IGNORECASE)
                 if title_match: title = title_match.group(1)
             
-            # Clean up common tube site branding from titles for a premium look
+            # Clean up common tube site branding from titles for your Telegram bot
             title = re.sub(r' - (XVIDEOS\.COM|XNXX\.COM|XXXBP|SexVid\.xxx)$', '', title, flags=re.IGNORECASE)
             title = title.replace(" | xHamster", "").replace(" | PussySpace", "").strip()
             
@@ -77,10 +78,7 @@ async def extract_media(url: str):
             # 3. UNIVERSAL DURATION EXTRACTOR
             # ==========================================
             duration = "Unknown"
-            # Attack A: Hidden in JSON (xHamster)
             dur_match = re.search(r'"duration"\s*:\s*(\d+)', raw_html)
-            
-            # Attack B: Standard Meta Tags
             if not dur_match:
                 dur_match = re.search(r'<meta[\s\S]+?(?:property|itemprop)=["\'](?:video:duration|og:duration|duration|og:video:duration)["\'][\s\S]+?content=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
             if dur_match: 
@@ -91,24 +89,28 @@ async def extract_media(url: str):
             # ==========================================
             stream_url = None
             
-            # Attack Vector 1: xHamster Preload
+            # Vector 1: xHamster Preload
             preload_match = re.search(r'<link[^>]+?href=["\'](https?://[^"\']+\.m3u8[^"\']*)["\'][^>]*?as=["\']fetch["\']', raw_html, re.IGNORECASE)
-            if preload_match:
-                stream_url = preload_match.group(1)
+            if preload_match: stream_url = preload_match.group(1)
 
-            # Attack Vector 2: XVideos/XNXX JS Player
+            # Vector 2: XVideos/XNXX JS Player
             if not stream_url:
                 x_match = re.search(r"html5player\.setVideoHLS\(['\"](https?://[^'\"]+)['\"]\)", clean_html)
                 if not x_match:
                     x_match = re.search(r"html5player\.setVideoUrlHigh\(['\"](https?://[^'\"]+)['\"]\)", clean_html)
                 if x_match: stream_url = x_match.group(1)
             
-            # Attack Vector 3: Universal Naked M3U8
+            # Vector 3: KVS Engine (SexVid & others) -> Cleans the "function/0/" trap
+            if not stream_url:
+                kvs_match = re.search(r"(?:video_url|video_alt_url|video_url_hd)\s*:\s*['\"](?:function/[^/]+/)?(https?://[^'\"]+)['\"]", raw_html, re.IGNORECASE)
+                if kvs_match: stream_url = kvs_match.group(1)
+
+            # Vector 4: Universal Naked M3U8
             if not stream_url:
                 m3u8_links = re.findall(r'(https?://[^\s"\'<>\[\]()]+?\.m3u8[^\s"\'<>\[\]()]*)', clean_html)
                 if m3u8_links: stream_url = m3u8_links[0]
                 
-            # Attack Vector 4: Universal Naked MP4 (Filtered to avoid thumbnails)
+            # Vector 5: Universal Naked MP4 (Filtered to avoid thumbnails)
             if not stream_url:
                 mp4_links = re.findall(r'(https?://[^\s"\'<>\[\]()]+?\.mp4[^\s"\'<>\[\]()]*)', clean_html)
                 for link in mp4_links:
@@ -117,7 +119,7 @@ async def extract_media(url: str):
                         stream_url = link
                         break
 
-            # Attack Vector 5: Native Meta/Link Tags (PussySpace, XXXBP, SexVid)
+            # Vector 6: Native Meta/Link Tags (PussySpace, XXXBP)
             if not stream_url:
                 og_vid = re.search(r'<meta[\s\S]+?(?:property|name)=["\'](?:og:video:url|og:video|twitter:player)["\'][\s\S]+?content=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
                 if og_vid: stream_url = og_vid.group(1)
@@ -126,11 +128,36 @@ async def extract_media(url: str):
                 vid_src = re.search(r'<link[\s\S]+?rel=["\']video_src["\'][\s\S]+?href=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
                 if vid_src: stream_url = vid_src.group(1)
 
-            # Attack Vector 6: Standard <source> tags (WP-Tube themes like fry99)
+            # Vector 7: Standard <source> tags (Fry99)
             if not stream_url:
                 source_tag = re.search(r'<source[\s\S]+?src=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
                 if source_tag: stream_url = source_tag.group(1)
 
+            # ==========================================
+            # 5. CDN REDIRECT RESOLVER (The Bouncer Bypass)
+            # ==========================================
+            if stream_url and ('get_file' in stream_url or 'redirect' in stream_url):
+                logger.info(f"🕵️‍♂️ Resolving dynamic CDN redirect for: {stream_url[:50]}...")
+                try:
+                    resolve_headers = {
+                        "Referer": url, 
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
+                    }
+                    resolve_resp = await session.get(
+                        stream_url, 
+                        headers=resolve_headers, 
+                        allow_redirects=True, 
+                        stream=True, 
+                        timeout=15
+                    )
+                    stream_url = str(resolve_resp.url)
+                    logger.info(f"✅ Cracked final CDN vault link: {stream_url[:50]}...")
+                except Exception as e:
+                    logger.error(f"⚠️ Failed to resolve redirect: {e}")
+
+            # ==========================================
+            # 6. PAYLOAD DELIVERY
+            # ==========================================
             if not stream_url:
                 return {
                     "error": "Media stream not found. Omni-Extractor exhausted.",
@@ -144,7 +171,11 @@ async def extract_media(url: str):
                 "title": title,
                 "thumbnail": thumbnail,
                 "duration": duration,
-                "stream_url": stream_url
+                "stream_url": stream_url,
+                "headers_needed": {
+                    "Referer": url,
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
+                }
             }
             
     except Exception as e:
