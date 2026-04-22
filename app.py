@@ -8,7 +8,7 @@ from curl_cffi.requests import AsyncSession
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-api = FastAPI(title="UL Sniper (Final Cut)")
+api = FastAPI(title="UL Sniper (Embed Backdoor Edition)")
 
 def format_duration(raw_dur):
     if not raw_dur: return "Unknown"
@@ -32,39 +32,54 @@ async def health_check():
 
 @api.get("/api/download")
 async def extract_media(url: str):
-    logger.info(f"🎯 Ripping: {url}")
+    logger.info(f"🎯 Initial Target: {url}")
+    
+    # ==========================================
+    # 🚪 THE EMBED BACKDOOR INTERCEPTOR
+    # ==========================================
+    target_url = url
+    if "xhamster.com/videos/" in url:
+        # Snatch the ID from the end of the URL and strip any tracking queries
+        video_id = url.split('-')[-1].split('?')[0] 
+        target_url = f"https://xhamster.com/embed/{video_id}"
+        logger.info(f"🚪 Hitting Embed Backdoor: {target_url}")
+        
     try:
-        # THE ORIGINAL CLEAN REQUEST (No fake cookies, just pure browser impersonation)
         async with AsyncSession(impersonate="chrome110") as session:
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
                 "Accept-Language": "en-US,en;q=0.5",
-                "Referer": "https://www.google.com/"
+                # Spoof the referer so xHamster thinks a random site is loading the embed
+                "Referer": "https://www.google.com/" 
             }
             
-            response = await session.get(url, headers=headers, timeout=15)
+            response = await session.get(target_url, headers=headers, timeout=15)
             raw_html = response.text
             clean_html = raw_html.replace('\\/', '/')
             
+            # --- 1. TITLE (Upgraded to catch `<title >`) ---
             title = "Unknown Title"
-            title_match = re.search(r'<title>([\s\S]*?)</title>', raw_html, re.IGNORECASE)
+            title_match = re.search(r'<title[^>]*>([\s\S]*?)</title>', raw_html, re.IGNORECASE)
             if title_match: title = title_match.group(1).replace(" | xHamster", "").strip()
             
+            # --- 2. THUMBNAIL ---
             thumbnail = None
             thumb_match = re.search(r'<meta[\s\S]+?property=["\']og:image["\'][\s\S]+?content=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
             if thumb_match: thumbnail = thumb_match.group(1)
+            if not thumbnail:
+                raw_jpg = re.search(r"(https?://[^\s\"\'<>\[\]()]+?(?:poster|thumb|cover|snapshot)[^\s\"\'<>\[\]()]*\.jpg)", clean_html, re.IGNORECASE)
+                if raw_jpg: thumbnail = raw_jpg.group(1)
             
+            # --- 3. DURATION ---
             duration = "Unknown"
             dur_match = re.search(r'<meta[\s\S]+?(?:property|itemprop)=["\'](?:video:duration|og:duration|duration|og:video:duration)["\'][\s\S]+?content=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
             if dur_match: duration = format_duration(dur_match.group(1))
 
+            # --- 4. THE STREAM ---
             stream_url = None
-            
-            # THE TITANIUM REGEX (Hunts M3U8 anywhere, ignoring line breaks)
             m3u8_links = re.findall(r'(https?://[^\s"\'<>\[\]()]+?\.m3u8[^\s"\'<>\[\]()]*)', clean_html)
-            if m3u8_links:
-                stream_url = m3u8_links[0]
+            if m3u8_links: stream_url = m3u8_links[0]
                 
             if not stream_url:
                 mp4_links = re.findall(r'(https?://[^\s"\'<>\[\]()]+?\.mp4[^\s"\'<>\[\]()]*)', clean_html)
@@ -76,10 +91,11 @@ async def extract_media(url: str):
 
             if not stream_url:
                 return {
-                    "error": "Media stream not found.",
+                    "error": "Media stream not found in Embed Backdoor.",
                     "diagnostics": {
+                        "target_used": target_url,
                         "downloaded_page_title": title,
-                        "html_snippet": raw_html[:300] 
+                        "html_snippet": raw_html[:250] 
                     }
                 }
                 
@@ -92,14 +108,6 @@ async def extract_media(url: str):
             
     except Exception as e:
         return {"error": f"Extraction failed: {str(e)}"}
-
-@api.get("/api/source", response_class=HTMLResponse)
-async def get_raw_source(url: str):
-    try:
-        async with AsyncSession(impersonate="chrome110") as session:
-            response = await session.get(url, timeout=15)
-            return response.text
-    except Exception as e: return f"Error: {str(e)}"
 
 if __name__ == "__main__":
     uvicorn.run(api, host="0.0.0.0", port=8000)
