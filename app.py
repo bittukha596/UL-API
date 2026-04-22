@@ -1,13 +1,15 @@
 import re
 import logging
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 import uvicorn
 from curl_cffi.requests import AsyncSession
 
+# --- PROFESSIONAL LOGGING ---
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-api = FastAPI(title="UL Sniper (Launchpad Edition)")
+api = FastAPI(title="UL Sniper (Titanium Regex Edition)")
 
 def format_duration(raw_dur):
     if not raw_dur: return "Unknown"
@@ -27,7 +29,7 @@ def format_duration(raw_dur):
 
 @api.get("/api/health")
 async def health_check():
-    return {"status": "200 OK", "engine": "Launchpad HTTP Ripper is Online 🔥"}
+    return {"status": "200 OK", "engine": "Titanium HTTP Ripper is Online 🔥"}
 
 @api.get("/api/download")
 async def extract_media(url: str):
@@ -46,58 +48,83 @@ async def extract_media(url: str):
             raw_html = response.text
             clean_html = raw_html.replace('\\/', '/') 
             
+            # ==========================================
+            # 💀 THE TITANIUM REGEX EXTRACTION
+            # ==========================================
             title = "Unknown Title"
             thumbnail = None
             duration = "Unknown"
             stream_url = None
             
-            title_match = re.search(r'<meta\s+property=["\']og:title["\']\s+content=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
-            if not title_match: title_match = re.search(r'<title>(.*?)</title>', raw_html, re.IGNORECASE)
+            # 1. TITLE (Immune to newlines)
+            title_match = re.search(r'<meta[\s\S]+?property=["\']og:title["\'][\s\S]+?content=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
+            if not title_match: title_match = re.search(r'<title>([\s\S]*?)</title>', raw_html, re.IGNORECASE)
             if title_match: title = title_match.group(1).strip()
 
-            thumb_match = re.search(r'<meta\s+property=["\']og:image["\']\s+content=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
+            # 2. THUMBNAIL (Immune to newlines)
+            thumb_match = re.search(r'<meta[\s\S]+?property=["\']og:image["\'][\s\S]+?content=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
             if thumb_match:
                 thumbnail = thumb_match.group(1)
                 if thumbnail.startswith("//"): thumbnail = "https:" + thumbnail
                 thumbnail = thumbnail.replace('_t.jpg', '_p.jpg').replace('_t.webp', '_p.webp')
             
             if not thumbnail:
-                raw_jpg = re.search(r"(https?://[^\s\"\'<>\[\]\{\}]+?(?:poster|thumb|cover|snapshot)[^\s\"\'<>\[\]\{\}]*\.jpg)", clean_html, re.IGNORECASE)
+                raw_jpg = re.search(r"(https?://[^\"\'\s<>]+?(?:poster|thumb|cover|snapshot)[^\"\'\s<>]*\.jpg)", clean_html, re.IGNORECASE)
                 if raw_jpg: thumbnail = raw_jpg.group(1)
 
-            dur_match = re.search(r'<meta\s+(?:property|itemprop)=["\'](?:video:duration|og:duration|duration|og:video:duration)["\']\s+content=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
+            # 3. DURATION (Immune to newlines)
+            dur_match = re.search(r'<meta[\s\S]+?(?:property|itemprop)=["\'](?:video:duration|og:duration|duration|og:video:duration)["\'][\s\S]+?content=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
             if dur_match: duration = format_duration(dur_match.group(1))
 
+            # 4. STREAM URL
             xv_match = re.search(r"html5player\.setVideoHLS\(['\"](https?://[^'\"]+)['\"]\)", clean_html)
             if xv_match: stream_url = xv_match.group(1)
             
+            # THE FIX: Preload hunter immune to invisible line breaks
             if not stream_url:
-                preload_match = re.search(r'<link\s+rel=["\']preload["\'].*?href=["\']([^"\']+\.m3u8[^"\']*)["\']', raw_html, re.IGNORECASE)
+                preload_match = re.search(r'<link[\s\S]+?rel=["\']preload["\'][\s\S]*?href=["\']([^"\']+\.m3u8[^"\']*)["\']', raw_html, re.IGNORECASE)
                 if preload_match: stream_url = preload_match.group(1)
             
+            # THE FIX: Universal naked m3u8 hunter (no bracket restrictions)
             if not stream_url:
-                m3u8_match = re.search(r"(https?://[^\s\"\'<>\[\]\{\}]+\.m3u8[^\s\"\'<>\[\]\{\}]*)", clean_html)
+                m3u8_match = re.search(r"(https?://[^\"\'\s<>]+?\.m3u8[^\"\'\s<>]*)", clean_html)
                 if m3u8_match: stream_url = m3u8_match.group(1)
                 
             if not stream_url:
                 kvs_match = re.search(r"(?:video_url|video_alt_url|video_url_hd):\s*['\"](?:function/[^/]+/)?(https?://[^'\"]+)['\"]", clean_html)
                 if kvs_match: stream_url = kvs_match.group(1)
                 
+            # og:video fallback (Immune to newlines)
             if not stream_url:
-                og_vid = re.search(r'<meta\s+property=["\']og:video(?::url)?["\']\s+content=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
+                og_vid = re.search(r'<meta[\s\S]+?property=["\']og:video(?::url)?["\'][\s\S]+?content=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
                 if og_vid: stream_url = og_vid.group(1)
 
-            if not stream_url: return {"error": "Media stream not found in raw HTML. IP bypass worked, but layout is unrecognizable."}
+            if not stream_url:
+                return {"error": "Media stream not found. Layout changed or URL is heavily encrypted."}
                 
-            return {
-                "title": title,
+            result = {
+                "title": title.replace(" | xHamster", ""),
                 "thumbnail": thumbnail,
                 "duration": duration,
                 "stream_url": stream_url
             }
             
+            logger.info(f"🎯 Extraction Complete! Stream URL Snippet: {stream_url[:50]}...")
+            return result
+            
     except Exception as e:
+        logger.error(f"❌ Extraction Crash: {e}")
         return {"error": f"Extraction failed: {str(e)}"}
+
+# Keeping the debug route so you can always check!
+@api.get("/api/source", response_class=HTMLResponse)
+async def get_raw_source(url: str):
+    try:
+        async with AsyncSession(impersonate="chrome110") as session:
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+            response = await session.get(url, headers=headers, timeout=15)
+            return response.text
+    except Exception as e: return f"Error: {str(e)}"
 
 if __name__ == "__main__":
     uvicorn.run(api, host="0.0.0.0", port=8000)
