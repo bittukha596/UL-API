@@ -141,14 +141,15 @@ async def extract_media(url: str):
                 if source_tag: stream_url = source_tag.group(1)
 
             # ==========================================
+                        # ==========================================
             # 5. CDN REDIRECT RESOLVER (The Bouncer Bypass)
             # ==========================================
             if stream_url and ('get_file' in stream_url or 'redirect' in stream_url):
                 logger.info(f"🕵️‍♂️ Resolving dynamic CDN redirect for: {stream_url[:50]}...")
                 try:
+                    # 👻 GHOST FIX: ONLY pass the Referer. Let curl_cffi handle the User-Agent automatically!
                     resolve_headers = {
-                        "Referer": url, 
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
+                        "Referer": url 
                     }
                     resolve_resp = await session.get(
                         stream_url, 
@@ -180,11 +181,12 @@ async def extract_media(url: str):
                 "duration": duration,
                 "stream_url": stream_url,
                 "headers_needed": {
-                    "Referer": url,
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
+                    "Referer": url
+                    # Removed the poisoned User-Agent here too!
                 }
             }
-            
+
+
     except Exception as e:
         return {"error": f"Extraction failed: {str(e)}"}
 
