@@ -1,4 +1,5 @@
 import re
+import time
 import logging
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
@@ -9,7 +10,7 @@ from curl_cffi.requests import AsyncSession
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-api = FastAPI(title="UL Sniper (Omni-Extractor Ultimate)")
+api = FastAPI(title="UL Sniper (Omni-Extractor Ultimate V3)")
 
 def format_duration(raw_dur):
     """Universally parses ISO 8601 timestamps and raw seconds into MM:SS or HH:MM:SS"""
@@ -40,7 +41,7 @@ def format_duration(raw_dur):
 
 @api.get("/api/health")
 async def health_check():
-    return {"status": "200 OK", "engine": "Omni-Extractor Ultimate Online 🔥"}
+    return {"status": "200 OK", "engine": "Omni-Extractor Ultimate V3 Online 🔥"}
 
 @api.get("/api/download")
 async def extract_media(url: str):
@@ -63,7 +64,7 @@ async def extract_media(url: str):
                 title_match = re.search(r'<title[^>]*>([\s\S]*?)</title>', raw_html, re.IGNORECASE)
                 if title_match: title = title_match.group(1)
             
-            # Clean up common tube site branding from titles for your Telegram bot
+            # Clean up common tube site branding from titles
             title = re.sub(r' - (XVIDEOS\.COM|XNXX\.COM|XXXBP|SexVid\.xxx)$', '', title, flags=re.IGNORECASE)
             title = title.replace(" | xHamster", "").replace(" | PussySpace", "").strip()
             
@@ -100,10 +101,16 @@ async def extract_media(url: str):
                     x_match = re.search(r"html5player\.setVideoUrlHigh\(['\"](https?://[^'\"]+)['\"]\)", clean_html)
                 if x_match: stream_url = x_match.group(1)
             
-            # Vector 3: KVS Engine (SexVid & others) -> Cleans the "function/0/" trap
+            # Vector 3: KVS Engine (SexVid & others) -> Cleans the "function/0/" trap & INJECTS LIVE 'rnd'
             if not stream_url:
                 kvs_match = re.search(r"(?:video_url|video_alt_url|video_url_hd)\s*:\s*['\"](?:function/[^/]+/)?(https?://[^'\"]+)['\"]", raw_html, re.IGNORECASE)
-                if kvs_match: stream_url = kvs_match.group(1)
+                if kvs_match: 
+                    stream_url = kvs_match.group(1)
+                    # 💀 THE RND TIME-FORGE: Inject the live 13-digit millisecond timestamp
+                    if 'get_file' in stream_url and 'rnd=' not in stream_url:
+                        live_timestamp = int(time.time() * 1000)
+                        separator = '&' if '?' in stream_url else '?'
+                        stream_url = f"{stream_url}{separator}rnd={live_timestamp}"
 
             # Vector 4: Universal Naked M3U8
             if not stream_url:
