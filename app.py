@@ -5,7 +5,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 import uvicorn
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
+
+# 💀 THE V2 IMPORT FIX
+from playwright_stealth import Stealth 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -52,11 +54,11 @@ async def lifespan(app: FastAPI):
     await engine["browser"].close()
     await engine["playwright"].stop()
 
-api = FastAPI(title="UL Sniper (Stealth Assassin)", lifespan=lifespan)
+api = FastAPI(title="UL Sniper (Stealth Assassin V2)", lifespan=lifespan)
 
 @api.get("/api/health")
 async def health_check():
-    return {"status": "200 OK", "engine": "Playwright Stealth Assassin Online 🔥"}
+    return {"status": "200 OK", "engine": "Playwright Stealth Assassin V2 Online 🔥"}
 
 @api.get("/api/download")
 async def extract_media(url: str):
@@ -69,10 +71,12 @@ async def extract_media(url: str):
         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         viewport={"width": 1920, "height": 1080}
     )
-    page = await context.new_page()
     
-    # 💀 INJECT STEALTH EVASION
-    await stealth_async(page)
+    # 💀 THE V2 STEALTH INJECTION (Applies to the entire context)
+    stealth = Stealth()
+    await stealth.apply_stealth_async(context)
+    
+    page = await context.new_page()
     
     stream_url = None
 
@@ -176,7 +180,7 @@ async def extract_media(url: str):
     except Exception as e:
         return {"error": f"Extraction failed: {str(e)}"}
     finally:
-        # Instantly kill the tab to free up the 8GB RAM
+        # Instantly kill the tab to free up RAM
         await context.close()
 
 if __name__ == "__main__":
