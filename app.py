@@ -8,7 +8,7 @@ from curl_cffi.requests import AsyncSession
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-api = FastAPI(title="UL Sniper (God Mode Edition)")
+api = FastAPI(title="UL Sniper (Final Cut)")
 
 def format_duration(raw_dur):
     if not raw_dur: return "Unknown"
@@ -26,13 +26,15 @@ def format_duration(raw_dur):
         return f"{h:02d}:{m:02d}:{s:02d}" if h > 0 else f"{m:02d}:{s:02d}"
     return raw_dur
 
+@api.get("/api/health")
+async def health_check():
+    return {"status": "200 OK"}
+
 @api.get("/api/download")
 async def extract_media(url: str):
     logger.info(f"🎯 Ripping: {url}")
     try:
-        # 💀 THE AGE-GATE BYPASS COOKIES
-        fake_cookies = {"age_verified": "1", "is_age_verified": "1"}
-        
+        # THE ORIGINAL CLEAN REQUEST (No fake cookies, just pure browser impersonation)
         async with AsyncSession(impersonate="chrome110") as session:
             headers = {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -41,36 +43,29 @@ async def extract_media(url: str):
                 "Referer": "https://www.google.com/"
             }
             
-            # Injecting cookies directly into the request
-            response = await session.get(url, headers=headers, cookies=fake_cookies, timeout=15)
+            response = await session.get(url, headers=headers, timeout=15)
             raw_html = response.text
             clean_html = raw_html.replace('\\/', '/')
             
-            # --- 1. Get Page Title for Diagnostics ---
+            title = "Unknown Title"
             title_match = re.search(r'<title>([\s\S]*?)</title>', raw_html, re.IGNORECASE)
-            title = title_match.group(1).strip() if title_match else "Unknown Title"
+            if title_match: title = title_match.group(1).replace(" | xHamster", "").strip()
             
-            # --- 2. Thumbnail ---
             thumbnail = None
             thumb_match = re.search(r'<meta[\s\S]+?property=["\']og:image["\'][\s\S]+?content=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
             if thumb_match: thumbnail = thumb_match.group(1)
             
-            # --- 3. Duration ---
             duration = "Unknown"
             dur_match = re.search(r'<meta[\s\S]+?(?:property|itemprop)=["\'](?:video:duration|og:duration|duration|og:video:duration)["\'][\s\S]+?content=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
             if dur_match: duration = format_duration(dur_match.group(1))
 
-            # ==========================================
-            # 💀 THE GOD MODE STREAM SCANNER
-            # ==========================================
             stream_url = None
             
-            # Attack Vector 1: Find ANY link ending in .m3u8 anywhere in the text
+            # THE TITANIUM REGEX (Hunts M3U8 anywhere, ignoring line breaks)
             m3u8_links = re.findall(r'(https?://[^\s"\'<>\[\]()]+?\.m3u8[^\s"\'<>\[\]()]*)', clean_html)
             if m3u8_links:
                 stream_url = m3u8_links[0]
                 
-            # Attack Vector 2: Fallback to MP4 if M3U8 is totally hidden
             if not stream_url:
                 mp4_links = re.findall(r'(https?://[^\s"\'<>\[\]()]+?\.mp4[^\s"\'<>\[\]()]*)', clean_html)
                 for link in mp4_links:
@@ -78,19 +73,18 @@ async def extract_media(url: str):
                     if 'preview' not in lower_link and 'thumb' not in lower_link and 'poster' not in lower_link:
                         stream_url = link
                         break
-                        
-            # --- 4. The Diagnostic Output ---
+
             if not stream_url:
                 return {
                     "error": "Media stream not found.",
                     "diagnostics": {
-                        "downloaded_page_title": title, # Tells us exactly what page the bot got trapped on!
-                        "html_snippet": raw_html[:250] 
+                        "downloaded_page_title": title,
+                        "html_snippet": raw_html[:300] 
                     }
                 }
                 
             return {
-                "title": title.replace(" | xHamster", "").strip(),
+                "title": title,
                 "thumbnail": thumbnail,
                 "duration": duration,
                 "stream_url": stream_url
@@ -102,9 +96,8 @@ async def extract_media(url: str):
 @api.get("/api/source", response_class=HTMLResponse)
 async def get_raw_source(url: str):
     try:
-        fake_cookies = {"age_verified": "1", "is_age_verified": "1"}
         async with AsyncSession(impersonate="chrome110") as session:
-            response = await session.get(url, cookies=fake_cookies, timeout=15)
+            response = await session.get(url, timeout=15)
             return response.text
     except Exception as e: return f"Error: {str(e)}"
 
