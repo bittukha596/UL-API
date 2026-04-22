@@ -10,52 +10,57 @@ from curl_cffi.requests import AsyncSession
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-api = FastAPI(title="UL Sniper (Omni-Extractor Ultimate V3)")
+api = FastAPI(title="UL Sniper (Omni-Extractor Ultimate V4)")
 
 def format_duration(raw_dur):
-    """Universally parses ISO 8601 timestamps and raw seconds into MM:SS or HH:MM:SS"""
     if not raw_dur: return "Unknown"
     raw_dur = str(raw_dur).strip().upper()
-    
-    # THE ISO 8601 HUNTER (Catches PT19M57S, P0DT0H13M41S, etc.)
     match = re.search(r'P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', raw_dur)
     if match:
         d = int(match.group(1)) if match.group(1) else 0
         h = int(match.group(2)) if match.group(2) else 0
         m = int(match.group(3)) if match.group(3) else 0
         s = int(match.group(4)) if match.group(4) else 0
-        
         total_seconds = (d * 86400) + (h * 3600) + (m * 60) + s
         h, rem = divmod(total_seconds, 3600)
         m, s = divmod(rem, 60)
         return f"{h:02d}:{m:02d}:{s:02d}" if h > 0 else f"{m:02d}:{s:02d}"
-        
-    # Raw seconds fallback
     if raw_dur.replace('.', '').isdigit():
         total_seconds = int(float(raw_dur))
         h, rem = divmod(total_seconds, 3600)
         m, s = divmod(rem, 60)
         return f"{h:02d}:{m:02d}:{s:02d}" if h > 0 else f"{m:02d}:{s:02d}"
-        
     return raw_dur
 
 @api.get("/api/health")
 async def health_check():
-    return {"status": "200 OK", "engine": "Omni-Extractor Ultimate V3 Online 🔥"}
+    return {"status": "200 OK", "engine": "Fortified Omni-Extractor Online 🔥"}
 
 @api.get("/api/download")
 async def extract_media(url: str):
     logger.info(f"🎯 Ripping: {url}")
     try:
-        # Ghost Mode: Zero custom headers, perfect browser impersonation
-        async with AsyncSession(impersonate="chrome116") as session:
-            response = await session.get(url, timeout=15)
+        # 💀 THE ARMOR: Flawless Modern Chrome Headers to bypass initial Nginx 403
+        armor_headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Upgrade-Insecure-Requests": "1"
+        }
+
+        async with AsyncSession(impersonate="chrome120") as session:
+            response = await session.get(url, headers=armor_headers, timeout=15)
             raw_html = response.text
             clean_html = raw_html.replace('\\/', '/')
             
-            # ==========================================
-            # 1. UNIVERSAL TITLE EXTRACTOR
-            # ==========================================
+            # --- 1. TITLE ---
             title = "Unknown Title"
             title_match = re.search(r'<meta[\s\S]+?(?:property|name)=["\'](?:og:title|twitter:title)["\'][\s\S]+?content=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
             if title_match:
@@ -63,21 +68,15 @@ async def extract_media(url: str):
             else:
                 title_match = re.search(r'<title[^>]*>([\s\S]*?)</title>', raw_html, re.IGNORECASE)
                 if title_match: title = title_match.group(1)
-            
-            # Clean up common tube site branding from titles
             title = re.sub(r' - (XVIDEOS\.COM|XNXX\.COM|XXXBP|SexVid\.xxx)$', '', title, flags=re.IGNORECASE)
             title = title.replace(" | xHamster", "").replace(" | PussySpace", "").strip()
             
-            # ==========================================
-            # 2. UNIVERSAL THUMBNAIL EXTRACTOR
-            # ==========================================
+            # --- 2. THUMBNAIL ---
             thumbnail = None
             thumb_match = re.search(r'<meta[\s\S]+?(?:property|name)=["\'](?:og:image|twitter:image)["\'][\s\S]+?content=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
             if thumb_match: thumbnail = thumb_match.group(1)
             
-            # ==========================================
-            # 3. UNIVERSAL DURATION EXTRACTOR
-            # ==========================================
+            # --- 3. DURATION ---
             duration = "Unknown"
             dur_match = re.search(r'"duration"\s*:\s*(\d+)', raw_html)
             if not dur_match:
@@ -85,39 +84,31 @@ async def extract_media(url: str):
             if dur_match: 
                 duration = format_duration(dur_match.group(1))
 
-            # ==========================================
-            # 4. OMNI-STREAM EXTRACTOR (Cascading Attack)
-            # ==========================================
+            # --- 4. OMNI-STREAM EXTRACTOR ---
             stream_url = None
             
-            # Vector 1: xHamster Preload
             preload_match = re.search(r'<link[^>]+?href=["\'](https?://[^"\']+\.m3u8[^"\']*)["\'][^>]*?as=["\']fetch["\']', raw_html, re.IGNORECASE)
             if preload_match: stream_url = preload_match.group(1)
 
-            # Vector 2: XVideos/XNXX JS Player
             if not stream_url:
                 x_match = re.search(r"html5player\.setVideoHLS\(['\"](https?://[^'\"]+)['\"]\)", clean_html)
                 if not x_match:
                     x_match = re.search(r"html5player\.setVideoUrlHigh\(['\"](https?://[^'\"]+)['\"]\)", clean_html)
                 if x_match: stream_url = x_match.group(1)
             
-            # Vector 3: KVS Engine (SexVid & others) -> Cleans the "function/0/" trap & INJECTS LIVE 'rnd'
             if not stream_url:
                 kvs_match = re.search(r"(?:video_url|video_alt_url|video_url_hd)\s*:\s*['\"](?:function/[^/]+/)?(https?://[^'\"]+)['\"]", raw_html, re.IGNORECASE)
                 if kvs_match: 
                     stream_url = kvs_match.group(1)
-                    # 💀 THE RND TIME-FORGE: Inject the live 13-digit millisecond timestamp
                     if 'get_file' in stream_url and 'rnd=' not in stream_url:
                         live_timestamp = int(time.time() * 1000)
                         separator = '&' if '?' in stream_url else '?'
                         stream_url = f"{stream_url}{separator}rnd={live_timestamp}"
 
-            # Vector 4: Universal Naked M3U8
             if not stream_url:
                 m3u8_links = re.findall(r'(https?://[^\s"\'<>\[\]()]+?\.m3u8[^\s"\'<>\[\]()]*)', clean_html)
                 if m3u8_links: stream_url = m3u8_links[0]
                 
-            # Vector 5: Universal Naked MP4 (Filtered to avoid thumbnails)
             if not stream_url:
                 mp4_links = re.findall(r'(https?://[^\s"\'<>\[\]()]+?\.mp4[^\s"\'<>\[\]()]*)', clean_html)
                 for link in mp4_links:
@@ -126,7 +117,6 @@ async def extract_media(url: str):
                         stream_url = link
                         break
 
-            # Vector 6: Native Meta/Link Tags (PussySpace, XXXBP)
             if not stream_url:
                 og_vid = re.search(r'<meta[\s\S]+?(?:property|name)=["\'](?:og:video:url|og:video|twitter:player)["\'][\s\S]+?content=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
                 if og_vid: stream_url = og_vid.group(1)
@@ -135,37 +125,34 @@ async def extract_media(url: str):
                 vid_src = re.search(r'<link[\s\S]+?rel=["\']video_src["\'][\s\S]+?href=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
                 if vid_src: stream_url = vid_src.group(1)
 
-            # Vector 7: Standard <source> tags (Fry99)
             if not stream_url:
                 source_tag = re.search(r'<source[\s\S]+?src=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
                 if source_tag: stream_url = source_tag.group(1)
 
             # ==========================================
-                        # ==========================================
-            # 5. CDN REDIRECT RESOLVER (The Bouncer Bypass)
+            # 5. CDN REDIRECT RESOLVER (Safe Catch Mode)
             # ==========================================
             if stream_url and ('get_file' in stream_url or 'redirect' in stream_url):
-                logger.info(f"🕵️‍♂️ Resolving dynamic CDN redirect for: {stream_url[:50]}...")
+                logger.info(f"🕵️‍♂️ Asking Bouncer for Redirect Location: {stream_url[:50]}...")
                 try:
-                    # 👻 GHOST FIX: ONLY pass the Referer. Let curl_cffi handle the User-Agent automatically!
-                    resolve_headers = {
-                        "Referer": url 
-                    }
+                    # 👻 We ONLY pass Referer. Let the session handle everything else.
+                    # We set allow_redirects=False to safely catch the Location header!
+                    resolve_headers = {"Referer": url, "Accept": "*/*"}
                     resolve_resp = await session.get(
                         stream_url, 
                         headers=resolve_headers, 
-                        allow_redirects=True, 
-                        stream=True, 
+                        allow_redirects=False, 
                         timeout=15
                     )
-                    stream_url = str(resolve_resp.url)
-                    logger.info(f"✅ Cracked final CDN vault link: {stream_url[:50]}...")
+                    # If the Bouncer hands us a 302, we steal the Location!
+                    if resolve_resp.status_code in [301, 302, 303, 307, 308]:
+                        stream_url = resolve_resp.headers.get("Location", stream_url)
+                        logger.info(f"✅ Cracked final CDN vault link: {stream_url[:50]}...")
+                    else:
+                        logger.warning(f"⚠️ Bouncer returned status {resolve_resp.status_code}")
                 except Exception as e:
                     logger.error(f"⚠️ Failed to resolve redirect: {e}")
 
-            # ==========================================
-            # 6. PAYLOAD DELIVERY
-            # ==========================================
             if not stream_url:
                 return {
                     "error": "Media stream not found. Omni-Extractor exhausted.",
@@ -181,19 +168,18 @@ async def extract_media(url: str):
                 "duration": duration,
                 "stream_url": stream_url,
                 "headers_needed": {
-                    "Referer": url
-                    # Removed the poisoned User-Agent here too!
+                    "Referer": url,
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                 }
             }
-
-
+            
     except Exception as e:
         return {"error": f"Extraction failed: {str(e)}"}
 
 @api.get("/api/source", response_class=HTMLResponse)
 async def get_raw_source(url: str):
     try:
-        async with AsyncSession(impersonate="chrome116") as session:
+        async with AsyncSession(impersonate="chrome120") as session:
             response = await session.get(url, timeout=15)
             return response.text
     except Exception as e: return f"Error: {str(e)}"
